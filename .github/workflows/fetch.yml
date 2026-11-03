@@ -30,11 +30,13 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Fetch quotes
         run: node scripts/fetch.mjs
+      - name: Build brief
+        run: node scripts/brief.mjs
       - name: Commit
         run: |
           git config user.name "tv-relay-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add data/quotes.json
+          git add data/quotes.json data/brief.json
           if git diff --staged --quiet; then
             echo "no changes"
             exit 0
