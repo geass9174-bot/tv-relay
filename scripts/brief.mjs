@@ -17,6 +17,7 @@ const r5 = (x) => {
   return Math.round(n * 1e5) / 1e5;
 };
 
+const NOW_SEC = Math.floor(Date.now() / 1000);
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 const sma = (a, n) => (a.length < n ? null : a.slice(-n).reduce((x, y) => x + y, 0) / n);
 
@@ -51,10 +52,21 @@ for (const sym of SYMBOLS) {
   const q = qget(sym);
   const bf = readJson(`data/bars/${sym}_D.json`);
   const bars = Array.isArray(bf?.bars) ? bf.bars : [];
-  // The last bar may still be forming; every derived stat uses completed bars only.
-  const done = bars.slice(0, -1);
+  // A daily bar is closed when a later bar exists, or when its 24h window has run out.
+  // Never blind-slice: bars-daily runs 22:30 UTC, 30 minutes BEFORE the 23:00 UTC
+  // (18:00 ET) boundary, so for ~23.5h of every 24 the newest bar on disk has already
+  // closed and slice(0,-1) throws away a finished session -- pday_* goes a full day
+  // stale and atr14 loses the newest closed TR. Ask the clock, not the array index.
+  const done = bars.filter((b, i) => bars[i + 1] !== undefined || b.time + 86400 <= NOW_SEC);
 
-  if (!done.length && !q) { brief.rows[sym] = { error: 'no_data' }; failed++; continue; }
+  // An object in a map of arrays survives zip() and yields {'last':'error'} -- no
+  // exception, a shape that looks fine, and a string where a price belongs.
+  if (!done.length && !q) {
+    brief.rows[sym] = COLS.map(() => null);
+    (brief.bad ??= []).push(sym);
+    failed++;
+    continue;
+  }
 
   const closes = done.map((b) => b.close);
   const win20 = done.slice(-20);
@@ -62,7 +74,9 @@ for (const sym of SYMBOLS) {
   const d20l = win20.length ? Math.min(...win20.map((b) => b.low)) : null;
   const prev = done.at(-1);
   const a = atr14(done);
-  const last = q?.last ?? (bars.at(-1)?.close ?? null);
+  // No fallback to the forming bar's close: that would make `last` a quote in one
+  // row and a candle close in another, with s.ok counting both. Missing quote -> null.
+  const last = q?.last ?? null;
   const rng = d20h != null && d20l != null && d20h !== d20l && last != null
     ? (last - d20l) / (d20h - d20l) : null;
 
@@ -75,10 +89,20 @@ for (const sym of SYMBOLS) {
     r5(sma(closes, 20)), r5(sma(closes, 50)),
     r5(rng),
   ];
+  if (brief.rows[sym].length !== COLS.length) {
+    throw new Error(`${sym}: row length ${brief.rows[sym].length} !== COLS.length ${COLS.length}`);
+  }
   ok++;
 }
 
 brief.s = { ok, failed };
+// `u` is the last time the CONTENT changed, not the last successful build -- every
+// writer here skips on no-change, so on a closed market `u` goes days stale while the
+// relay is perfectly healthy. A >30min freshness gate on `u` therefore fires every
+// weekend. Do NOT add an `hb` field to this payload: it would be excluded from `sig`
+// like `u` and inherit the same defect. Liveness is read out of band, from the Actions
+// API -- the last completed run of .github/workflows/fetch.yml. `u` answers "fresh",
+// the Actions run answers "alive"; this payload cannot answer the second.
 brief.asof = quotes.u ?? null;
 
 // Only rewrite when the numbers actually moved. 'u' is excluded: restamping it
