@@ -20,9 +20,11 @@ const COUNT = 200;
 
 const key = (s) => s.replace(/^(FX_IDC|FX|TVC|BITSTAMP|NYMEX):/, '');
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
-// Same 5-decimal convention as fetch.mjs, so float jitter cannot be mistaken for a
-// correction and turn every run into a commit.
-const r5 = (v) => (v === null || v === undefined || !Number.isFinite(Number(v))) ? null : Math.round(Number(v) * 1e5) / 1e5;
+// A stable fingerprint of one bar. Numbers are rounded at the same 5 decimals fetch.mjs
+// uses, so float jitter cannot be mistaken for a correction and turn every run into a
+// commit. Everything else is taken as-is, on purpose -- see the note at `changed`.
+const barKey = (b) => (b === null || b === undefined) ? null
+  : JSON.stringify(b, (k, v) => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 1e5) / 1e5 : v);
 
 mkdirSync('data/bars', { recursive: true });
 
@@ -54,17 +56,19 @@ for (const symbol of BAR_SYMBOLS) {
     // sees the same `time`, `changed` is false, and nothing ever revisits it -- the
     // fetch happens and the write is suppressed, so fetching again cannot repair it.
     // That is the same defect as the old 22:30Z window at one sixth the magnitude.
-    // So the just-closed bar is compared too. By construction this fires once or twice
-    // per session, and it also picks up a provider correcting an older bar, which the
-    // `time`-only check dropped silently.
-    const prevPenult = prev?.bars?.at(-2) ?? null;
-    const nextPenult = bars.at(-2) ?? null;
-    const penultMoved = !!prevPenult && !!nextPenult && (
-      r5(prevPenult.open) !== r5(nextPenult.open) ||
-      r5(prevPenult.high) !== r5(nextPenult.high) ||
-      r5(prevPenult.low) !== r5(nextPenult.low) ||
-      r5(prevPenult.close) !== r5(nextPenult.close)
-    );
+    //
+    // So the just-closed bar is compared too, and the WHOLE bar is compared, not a
+    // list of fields. A field list is a promise that the list is complete: add a field
+    // to the payload and the detector narrows silently with nothing failing. One string
+    // compare has no list to go stale and catches a revision to any field, including
+    // ones added later.
+    //
+    // Scope, stated so it is not overread: this reaches the second-newest bar only.
+    // That is the one that can be wrong for our reason. A provider correcting bar N-5
+    // is still dropped silently.
+    const prevPenultKey = barKey(prev?.bars?.at(-2));
+    const nextPenultKey = barKey(bars.at(-2));
+    const penultMoved = prevPenultKey !== null && nextPenultKey !== null && prevPenultKey !== nextPenultKey;
     const changed = !prev || prevLast !== nextLast || prev.bars.length !== bars.length || penultMoved;
     if (changed) {
       writeFileSync(path, JSON.stringify({ symbol, timeframe: TF, count: bars.length, bars }));
