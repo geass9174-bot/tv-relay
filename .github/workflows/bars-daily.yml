@@ -1,0 +1,48 @@
+name: bars-daily
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 22:30 UTC sits after the 17:00 ET day cut in both EDT and EST.
+    - cron: '30 22 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tv-relay-commit
+  cancel-in-progress: false
+
+jobs:
+  bars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Fetch daily bars
+        run: node scripts/bars.mjs D
+      - name: Commit
+        run: |
+          git config user.name "tv-relay-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/bars data/index.json
+          if git diff --staged --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "bars-d: $(date -u +%FT%TZ) [skip ci]"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push; then
+              echo "pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "push attempt $attempt failed, retrying"
+            sleep 5
+          done
+          echo "push failed after 5 attempts"
+          exit 1

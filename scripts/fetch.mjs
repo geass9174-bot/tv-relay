@@ -1,8 +1,8 @@
-import { getQuote, getCandles } from '@mathieuc/tradingview';
+import { getQuote } from '@mathieuc/tradingview';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
+// Quotes only. Candles live in scripts/bars.mjs on their own slower clock.
 // Canonical TradingView codes, verified 2026-11-03 against a 25-symbol probe.
-// 16 quotes for the dashboard; bars only for the 8 instruments that need ATR/structure.
 const QUOTE_SYMBOLS = [
   'FX_IDC:XAUUSD',   // gold   (TVC:GOLD is the same instrument, lags ~$1 in fast tape)
   'TVC:SILVER',      // silver (NOT XAGUSD per house convention)
@@ -14,14 +14,6 @@ const QUOTE_SYMBOLS = [
   'TVC:DXY',
   'BITSTAMP:BTCUSD', // NOT BINANCE:BTCUSDT (USDT, ~0.18% premium)
 ];
-
-const BAR_SYMBOLS = [
-  'FX_IDC:XAUUSD', 'TVC:SILVER', 'FX:USOIL', 'FX:UKOIL',
-  'FX:EURUSD', 'FX:GBPUSD', 'FX:USDJPY', 'BITSTAMP:BTCUSD',
-];
-
-const TIMEFRAMES = ['D', '60'];
-const COUNT = 200;
 
 const COLS = ['last', 'bid', 'ask', 'spread', 'chg', 'chg_pct',
               'open', 'high', 'low', 'prev_close', 'volume', 'ts', 'provider'];
@@ -36,18 +28,15 @@ const r5 = (x) => {
 
 const key = (s) => s.replace(/^(FX_IDC|FX|TVC|BITSTAMP|NYMEX):/, '');
 
-// FX change / intraday-position is unreliable for ~1h after the 17:00 ET day cut.
-// Gold and silver have a different day cut and are unaffected.
+// FX change / intraday position is unreliable for ~1h after the 17:00 ET day cut.
+// Gold and silver use a different day cut and are unaffected.
 const etHour = Number(new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', hour: '2-digit', hour12: false,
 }).format(new Date()));
 const fxRollover = etHour === 17;
 
-mkdirSync('data/bars', { recursive: true });
-const now = new Date().toISOString();
-
-const quotes = { u: now, cols: COLS, rows: {} };
-const index = { u: now, bars: [] };
+mkdirSync('data', { recursive: true });
+const quotes = { u: new Date().toISOString(), cols: COLS, rows: {} };
 let ok = 0, failed = 0;
 
 for (const symbol of QUOTE_SYMBOLS) {
@@ -69,25 +58,7 @@ for (const symbol of QUOTE_SYMBOLS) {
   }
 }
 
-for (const symbol of BAR_SYMBOLS) {
-  for (const tf of TIMEFRAMES) {
-    const slug = `${key(symbol)}_${tf}`;
-    try {
-      const bars = await getCandles({ symbol, timeframe: tf, count: COUNT, timeoutMs: 30000 });
-      writeFileSync(`data/bars/${slug}.json`, JSON.stringify({
-        symbol, timeframe: tf, updated_at: now, count: bars.length, bars,
-      }));
-      index.bars.push([slug, bars.length, bars.at(-1)?.time ?? null, bars.at(-1)?.close ?? null]);
-      ok++;
-    } catch (e) {
-      index.bars.push([slug, 0, null, e.code || String(e.message)]);
-      failed++;
-    }
-  }
-}
-
 quotes.s = { ok, failed };
 if (fxRollover) quotes.warn = 'fx_change_unreliable_et_rollover';
 writeFileSync('data/quotes.json', JSON.stringify(quotes));
-writeFileSync('data/index.json', JSON.stringify(index));
-console.log('done', JSON.stringify(quotes.s), fxRollover ? 'FX_ROLLOVER' : '');
+console.log('quotes', JSON.stringify(quotes.s), fxRollover ? 'FX_ROLLOVER' : '');
