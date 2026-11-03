@@ -80,5 +80,15 @@ for (const sym of SYMBOLS) {
 
 brief.s = { ok, failed };
 brief.asof = quotes.u ?? null;
-writeFileSync('data/brief.json', JSON.stringify(brief));
-console.log('brief', JSON.stringify(brief.s), 'asof', brief.asof);
+
+// Only rewrite when the numbers actually moved. 'u' is excluded: restamping it
+// every 15 minutes would make the tree dirty forever and defeat the quote-side guard.
+const sig = (b) => (b ? JSON.stringify([b.cols, b.rows, b.s, b.asof]) : null);
+const prevBrief = readJson('data/brief.json');
+
+if (sig(prevBrief) === sig(brief)) {
+  console.log('brief', JSON.stringify(brief.s), 'UNCHANGED - skip write');
+} else {
+  writeFileSync('data/brief.json', JSON.stringify(brief));
+  console.log('brief', JSON.stringify(brief.s), 'written asof', brief.asof);
+}

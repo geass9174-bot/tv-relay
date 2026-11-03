@@ -1,5 +1,5 @@
 import { getQuote } from '@mathieuc/tradingview';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 
 // Quotes only. Candles live in scripts/bars.mjs on their own slower clock.
 // Canonical TradingView codes, verified 2026-11-03 against a 25-symbol probe.
@@ -35,6 +35,28 @@ const etHour = Number(new Intl.DateTimeFormat('en-US', {
 }).format(new Date()));
 const fxRollover = etHour === 17;
 
+// Frozen-market guard: if no quote field moved, leave the file untouched so the
+// commit step sees a clean tree. 'ts' is excluded because the feed keeps
+// restamping a closed market, which is what used to force 96 empty commits/day
+// every weekend. Error rows are compared by their error text, so a symbol that
+// stays broken does not keep the pipeline committing either.
+function rowSig(r, cols) {
+  if (Array.isArray(r)) return r.map((v, i) => (cols[i] === 'ts' ? '_' : v)).join('|');
+  return 'E:' + JSON.stringify(r);
+}
+function unchanged(prev, next, cols) {
+  if (!prev?.rows || !next?.rows) return false;
+  const pk = Object.keys(prev.rows);
+  const nk = Object.keys(next.rows);
+  if (pk.length !== nk.length) return false;
+  if (nk.some((k) => !(k in prev.rows))) return false;
+  for (const k of nk) if (rowSig(prev.rows[k], cols) !== rowSig(next.rows[k], cols)) return false;
+  return true;
+}
+
+let prevQuotes = null;
+try { prevQuotes = JSON.parse(readFileSync('data/quotes.json', 'utf8')); } catch { /* first run */ }
+
 mkdirSync('data', { recursive: true });
 const quotes = { u: new Date().toISOString(), cols: COLS, rows: {} };
 let ok = 0, failed = 0;
@@ -60,5 +82,13 @@ for (const symbol of QUOTE_SYMBOLS) {
 
 quotes.s = { ok, failed };
 if (fxRollover) quotes.warn = 'fx_change_unreliable_et_rollover';
-writeFileSync('data/quotes.json', JSON.stringify(quotes));
-console.log('quotes', JSON.stringify(quotes.s), fxRollover ? 'FX_ROLLOVER' : '');
+
+const same = unchanged(prevQuotes, quotes, COLS)
+  && (prevQuotes?.warn ?? null) === (quotes.warn ?? null);
+
+if (same) {
+  console.log('quotes', JSON.stringify(quotes.s), 'UNCHANGED - skip write');
+} else {
+  writeFileSync('data/quotes.json', JSON.stringify(quotes));
+  console.log('quotes', JSON.stringify(quotes.s), 'written', fxRollover ? 'FX_ROLLOVER' : '');
+}
