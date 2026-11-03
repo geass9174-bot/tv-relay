@@ -1,0 +1,13 @@
+{
+  "symbols": [
+    "TVC:USOIL",
+    "TVC:UKOIL",
+    "NYMEX:CL1!",
+    "NYMEX:CLZ2026",
+    "NYMEX:CLF2027",
+    "NYMEX:BZ1!",
+    "NYMEX:BZZ2026",
+    "TVC:GOLD",
+    "OANDA:XAUUSD"
+  ]
+}

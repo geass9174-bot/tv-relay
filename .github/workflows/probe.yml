@@ -1,0 +1,50 @@
+name: probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'probe.config.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Probe
+        run: node scripts/probe.mjs
+
+      - name: Commit results
+        run: |
+          git config user.name "tv-relay-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/probe.json
+          if git diff --staged --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "probe: $(date -u +%FT%TZ) [skip ci]"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
