@@ -20,7 +20,7 @@ concurrency:
 jobs:
   quotes:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,13 +30,27 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Fetch quotes
         run: node scripts/fetch.mjs
+      # H1 refresh rides on this job because its own cron never fired.
+      # bars.yml is registered and active but the scheduler skipped its 16:05
+      # slot, so we no longer depend on a second cron being honoured. Gated to
+      # the first half hour: two attempts per hour, and bars.mjs re-reads 200
+      # bars each time so a missed hour backfills on the next successful run.
+      - name: Fetch H1 bars (top of hour)
+        run: |
+          M=$(date -u +%M)
+          if [ "$M" -lt 30 ]; then
+            echo "minute $M - fetching H1"
+            node scripts/bars.mjs 60
+          else
+            echo "minute $M - outside the hour window, skip H1"
+          fi
       - name: Build brief
         run: node scripts/brief.mjs
       - name: Commit
         run: |
           git config user.name "tv-relay-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add data/quotes.json data/brief.json
+          git add data/quotes.json data/brief.json data/bars data/index.json
           if git diff --staged --quiet; then
             echo "no changes"
             exit 0
