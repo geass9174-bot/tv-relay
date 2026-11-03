@@ -20,7 +20,7 @@ concurrency:
 jobs:
   quotes:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,12 +30,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Fetch quotes
         run: node scripts/fetch.mjs
-      # H1 refresh rides on this job because its own cron never fired.
-      # bars.yml is registered and active but the scheduler skipped its 16:05
-      # slot, so we no longer depend on a second cron being honoured. Gated to
-      # the first half hour: two attempts per hour, and bars.mjs re-reads 200
-      # bars each time so a missed hour backfills on the next successful run.
-      - name: Fetch H1 bars (top of hour)
+      # bars.yml and bars-daily.yml are registered and active, but GitHub's
+      # scheduler never dispatched them (zero bars commits in 20). So both bar
+      # fetches now ride on this job, which demonstrably fires every 15 min.
+      # bars.mjs re-reads 200 bars per call, so a missed window backfills on the
+      # next successful run - no data loss, just a later write.
+      - name: Fetch H1 bars (first half of the hour)
         run: |
           M=$(date -u +%M)
           if [ "$M" -lt 30 ]; then
@@ -43,6 +43,15 @@ jobs:
             node scripts/bars.mjs 60
           else
             echo "minute $M - outside the hour window, skip H1"
+          fi
+      - name: Fetch daily bars (22:30-23:00 UTC window)
+        run: |
+          HM=$(date -u +%H%M)
+          if [ "$HM" -ge 2230 ] && [ "$HM" -lt 2300 ]; then
+            echo "$HM UTC - fetching daily"
+            node scripts/bars.mjs D
+          else
+            echo "$HM UTC - outside the daily window, skip D"
           fi
       - name: Build brief
         run: node scripts/brief.mjs
