@@ -44,10 +44,18 @@ jobs:
           else
             echo "minute $M - outside the hour window, skip H1"
           fi
-      - name: Fetch daily bars (22:30-23:00 UTC window)
+      # 23:05-23:30 UTC is after the session close in BOTH seasons. TV daily bars
+      # open at 18:00 ET, which is 23:00Z in EST and 22:00Z in EDT. The previous
+      # window (22:30-23:00Z) was 30 minutes BEFORE the winter close, so the bar
+      # was stored 30 minutes short of its own session; in summer it happened to
+      # fall after the close, which is why the defect was seasonal and no test
+      # went red. Do not move this back to an earlier hour. bars.mjs writes the
+      # whole array, so the run that sees a new bar also stores the previous one
+      # final - one run after the close is enough.
+      - name: Fetch daily bars (23:05-23:30 UTC window)
         run: |
           HM=$(date -u +%H%M)
-          if [ "$HM" -ge 2230 ] && [ "$HM" -lt 2300 ]; then
+          if [ "$HM" -ge 2305 ] && [ "$HM" -lt 2330 ]; then
             echo "$HM UTC - fetching daily"
             node scripts/bars.mjs D
           else
