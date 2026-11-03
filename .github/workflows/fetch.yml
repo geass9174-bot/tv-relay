@@ -44,20 +44,32 @@ jobs:
           else
             echo "minute $M - outside the hour window, skip H1"
           fi
-      # 23:05-23:45 UTC is after the session close in BOTH seasons. TV daily bars
+      # 23:05-23:50 UTC is after the session close in BOTH seasons. TV daily bars
       # open at 18:00 ET, which is 23:00Z in EST and 22:00Z in EDT. The previous
       # window (22:30-23:00Z) was 30 minutes BEFORE the winter close, so the bar
       # was stored 30 minutes short of its own session; in summer it happened to
       # fall after the close, which is why the defect was seasonal and no test
       # went red. Do not move this back to an earlier hour.
-      # The window is 40 minutes wide on purpose: GitHub's scheduler is the thing
-      # that has already failed on this repo, and a single-run window that gets
-      # delayed by 20 minutes would silently skip the day. bars.mjs writes only
-      # when the newest bar's identity changes, so the extra runs are no-ops.
-      - name: Fetch daily bars (23:05-23:45 UTC window)
+      #
+      # Because this window sits after BOTH closes it does not move with the
+      # season, so it needs no {local, zone} of its own -- the local form belongs
+      # to the bar, not to the window. Only a window that straddles one close and
+      # not the other (the old 22:30Z) needs a seasonal rule.
+      #
+      # The upper bound must leave the LAST in-window slot able to do the work.
+      # With `-lt 2345` the slots are 23:15 and 23:30, and a 23:45 run is out of
+      # window -- so if 23:30 were still pending when 23:45 queued, the run that
+      # evicted it would decline, and the eviction would cost the day's bar. With
+      # `-lt 2350` there are three slots (23:15, 23:30, 23:45) and every one of
+      # them fetches, so an eviction can only ever move the work, never drop it.
+      # Do not narrow this back without checking that.
+      #
+      # bars.mjs writes only when something actually moved (new bar, or the
+      # just-closed bar settling), so the extra runs are no-ops and commit nothing.
+      - name: Fetch daily bars (23:05-23:50 UTC window)
         run: |
           HM=$(date -u +%H%M)
-          if [ "$HM" -ge 2305 ] && [ "$HM" -lt 2345 ]; then
+          if [ "$HM" -ge 2305 ] && [ "$HM" -lt 2350 ]; then
             echo "$HM UTC - fetching daily"
             node scripts/bars.mjs D
           else
