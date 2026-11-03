@@ -1,0 +1,9 @@
+{
+  "name": "tv-relay",
+  "private": true,
+  "type": "module",
+  "description": "TradingView data relay - fetch in Actions, publish JSON",
+  "dependencies": {
+    "@mathieuc/tradingview": "^4.1.0"
+  }
+}
