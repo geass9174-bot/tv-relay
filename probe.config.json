@@ -1,29 +1,15 @@
 {
   "symbols": [
-    "FX_IDC:XAUUSD",
-    "TVC:SILVER",
-    "FX:USOIL",
-    "FX:EURUSD",
-    "FX:GBPUSD",
-    "FX:USDJPY",
-    "FX:USDCHF",
-    "FX:GBPCAD",
-    "FX:GBPAUD",
-    "FX:GBPNZD",
-    "FX:GBPJPY",
-    "FX:EURJPY",
-    "FX:EURGBP",
-    "TVC:DXY",
-    "BITSTAMP:BTCUSD",
-    "TVC:USOIL",
-    "OANDA:XAUUSD",
-    "OANDA:XAGUSD",
-    "FX_IDC:XAGUSD",
-    "BINANCE:BTCUSDT",
     "NYMEX:CL1!",
-    "TVC:GOLD",
-    "TVC:UKOIL",
+    "NYMEX:CLZ2026",
+    "NYMEX:CLF2027",
+    "NYMEX:CLG2027",
+    "FX:USOIL",
+    "TVC:USOIL",
+    "NYMEX:BZ1!",
+    "NYMEX:BZZ2026",
+    "NYMEX:BZF2027",
     "FX:UKOIL",
-    "NYMEX:BZ1!"
+    "TVC:UKOIL"
   ]
 }
