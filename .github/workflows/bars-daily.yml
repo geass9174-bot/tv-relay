@@ -3,8 +3,13 @@ name: bars-daily
 on:
   workflow_dispatch:
   schedule:
-    # 22:30 UTC sits after the 17:00 ET day cut in both EDT and EST.
-    - cron: '30 22 * * *'
+    # TV daily bars open at 18:00 ET, which is 23:00Z in EST and 22:00Z in EDT.
+    # 23:05Z is 5 minutes after the winter close and 1h05m after the summer
+    # open, so it is after the close in both seasons. The old 22:30Z was 30
+    # minutes BEFORE the winter close, which stored the bar short of its own
+    # session - and in summer the same hour happened to fall after the close,
+    # so the defect was seasonal and no test ever went red on it.
+    - cron: '5 23 * * *'
 
 permissions:
   contents: write
