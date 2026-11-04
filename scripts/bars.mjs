@@ -4,8 +4,21 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 // Candles on their own clock. Usage: node scripts/bars.mjs <D|60>
 //
 // Writes only when a new bar has actually closed. Unchanged files are left untouched
-// so `git diff --staged --quiet` can do its job. Deliberately no `updated_at` inside
-// the payload: that field would differ on every run and defeat the change check.
+// so `git diff --staged --quiet` can do its job.
+//
+// `updated_at` IS written, but only inside the `changed` guard. That is the whole point:
+// a stamp that advances on every run makes the file differ every run and defeats the
+// change check, so a stamp cannot be written unconditionally. But "therefore no stamp"
+// is the wrong repair -- a bars file with no `updated_at` is not stale and not fresh, it
+// is unreadable on that axis, and a reader that defaults to "fresh" on a missing key
+// turns a silent drop into a silent lie. That is exactly what the 2026-11-03T23:34Z write
+// did when it dropped the field. Restored 2026-11-04.
+//
+// So the field means "when these bars last changed", NOT "when this file was last
+// touched". The second question cannot be answered from this file at all: its answer
+// would have to differ on runs that changed nothing, which is the one thing the change
+// check forbids. A liveness signal belongs in a different artifact, not here. `idx.u`
+// below is guarded for the same reason and is the same kind of stamp.
 const TF = process.argv[2];
 if (TF !== 'D' && TF !== '60') {
   console.error('usage: node scripts/bars.mjs <D|60>');
@@ -71,7 +84,7 @@ for (const symbol of BAR_SYMBOLS) {
     const penultMoved = prevPenultKey !== null && nextPenultKey !== null && prevPenultKey !== nextPenultKey;
     const changed = !prev || prevLast !== nextLast || prev.bars.length !== bars.length || penultMoved;
     if (changed) {
-      writeFileSync(path, JSON.stringify({ symbol, timeframe: TF, count: bars.length, bars }));
+      writeFileSync(path, JSON.stringify({ symbol, timeframe: TF, updated_at: new Date().toISOString(), count: bars.length, bars }));
       wrote++;
     } else {
       skipped++;
